@@ -1,29 +1,106 @@
 package main
 
 import (
-	"fmt"
+	"os"
 	"log"
-	"database/sql"
+	"fmt"
+	"errors"
 	
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/pranav1698/go-data-ingestion/env"
-	"github.com/gin-gonic/gin"
+	"github.com/pranav1698/go-data-ingestion/fileUtil"
+	"github.com/pranav1698/go-data-ingestion/database"
+	"github.com/pranav1698/go-data-ingestion/excel"
 )
+
+
 
 func main() {
 	log.Print("Starting Application....")
-	
-	r := gin.Default()
-	
 
-
-	conf := env.NewConfig("pranav", "pranavsql", "3306", "data_ingestion")
-
-	dbUrl := fmt.Sprintf("%s:%s@tcp(127.0.0.1:%s)/%s", conf.DbUsername, conf.DbPassword, conf.DbSqlPort, conf.Database)
-	
-	db, err := sql.Open("mysql", dbUrl)
+	fileName := "/home/pranav/go/src/go-data-ingestion/files/https___www.thisisbarry.com_-Top target pages-2022-08-16.csv"
+	file, err := os.Open(fileName)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error opening file: %s", err)
+		return
 	}
-	defer db.Close()
+	defer file.Close()
+
+	err = CheckFile(fileName)
+	if err != nil {
+		log.Println("Error: ", err)
+		return 
+	}
+
+	date := GetDateFromFileName(fileName)
+	log.Println(date)
+
+	err = CheckColumnsInDatabase(fileName)
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+}
+
+func CheckFile(fileName string) (error) {
+	var util fileUtil.IFileUtil = &fileUtil.FileUtil{}
+	isExcel := util.CheckExtension(fileName)
+	if !isExcel {
+		err := errors.New("Not a Excel File, please provide an excel or csv file as input")
+		return err
+	}
+
+	checkFormat := util.CheckFormat(fileName)
+	if !checkFormat {
+		err := errors.New("Please check that file adheres to predefined format, for e.g.: https___www.thisisbarry.com_-Top target pages-2022-08-01.csv")
+		return err
+	}
+
+	return nil
+}
+
+func GetDateFromFileName(fileName string) (string) {
+	var util fileUtil.IFileUtil = &fileUtil.FileUtil{}
+	
+	date := util.GetDate(fileName)
+	return date
+}
+
+func CheckColumnsInDatabase(fileName string) (error) {
+	var db database.IDatabase = &database.Database{}
+	dataBase, err := db.ConnectDatabase()
+	if err != nil {
+		return err
+	}
+
+	dbColumns, err := db.GetColumnsOfDatabase(dataBase)
+	if err != nil {
+		return err
+	}
+	
+	var xl excel.IExcel = &excel.Excel{}
+	excelColumnHeaders, err := xl.GetColumnsOfExcel(fileName)
+	if err != nil {
+		return err
+	}
+
+	for _, columnHeader := range excelColumnHeaders {
+		if columnHeader == "Target page" {
+			continue
+		}
+		flag := false
+
+		for _, dbColumnHeader := range dbColumns {
+			if dbColumnHeader == columnHeader {
+				flag = true
+			}
+		}
+		
+		if !flag {
+			err := fmt.Errorf("%s not present in database.", columnHeader)
+			return err
+		}
+		
+	}
+
+	defer dataBase.Close()
+	return nil
 }
