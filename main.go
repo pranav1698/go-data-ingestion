@@ -9,14 +9,13 @@ import (
 	"github.com/pranav1698/go-data-ingestion/fileUtil"
 	"github.com/pranav1698/go-data-ingestion/database"
 	"github.com/pranav1698/go-data-ingestion/excel"
+	"github.com/pranav1698/go-data-ingestion/record"
 )
-
-
 
 func main() {
 	log.Print("Starting Application....")
 
-	fileName := "/home/pranav/go/src/go-data-ingestion/files/https___www.thisisbarry.com_-Top target pages-2022-08-16.csv"
+	fileName := "/home/pranav/go/src/go-data-ingestion/files/https___www.thisisbarry.com_-Top target pages-2022-08-04.csv"
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Println("Error opening file: %s", err)
@@ -34,6 +33,12 @@ func main() {
 	log.Println(date)
 
 	err = CheckColumnsInDatabase(fileName)
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+
+	err = InsertRecordInDatabase(fileName, date)
 	if err != nil {
 		log.Println("Error:", err)
 		return
@@ -66,12 +71,7 @@ func GetDateFromFileName(fileName string) (string) {
 
 func CheckColumnsInDatabase(fileName string) (error) {
 	var db database.IDatabase = &database.Database{}
-	dataBase, err := db.ConnectDatabase()
-	if err != nil {
-		return err
-	}
-
-	dbColumns, err := db.GetColumnsOfDatabase(dataBase)
+	dbColumns, err := db.GetColumnsOfDatabase()
 	if err != nil {
 		return err
 	}
@@ -101,6 +101,42 @@ func CheckColumnsInDatabase(fileName string) (error) {
 		
 	}
 
-	defer dataBase.Close()
+	return nil
+}
+
+func InsertRecordInDatabase(fileName string, date string) (error) {
+	var xl excel.IExcel = &excel.Excel{}
+	records, err := xl.GetRowsOfExcel(fileName)
+	if err != nil {
+		return err
+	}
+
+	var db database.IDatabase = &database.Database{}
+	dataBase, err := db.ConnectDatabase()
+	if err != nil {
+		return err
+	}
+	
+	records = records[1:]
+	for _, row := range records {
+		targetPageId, err := db.InsertInSitesTable(dataBase, row[0])
+		if err != nil {
+			return err
+		}
+
+		metricRecord := record.MetricRecord{
+			TargetPageId: targetPageId,
+			Date: date,
+			IncomingLinks: row[1],
+			LinkingSites: row[2],
+		}
+
+		err = db.InsertInMetricsTable(dataBase, metricRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	dataBase.Close()
 	return nil
 }
