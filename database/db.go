@@ -11,7 +11,7 @@ import (
 
 type IDatabase interface {
 	ConnectDatabase() (*sql.DB, error)
-	GetColumnsOfDatabase() ([]string, error)
+	GetColumnsOfDatabase(*sql.DB) ([]string, error)
 	InsertInSitesTable(*sql.DB, string) (int, error)
 	InsertInMetricsTable(*sql.DB, record.MetricRecord) (error)
 }
@@ -33,13 +33,7 @@ func (db *Database) ConnectDatabase() (*sql.DB, error) {
 	return dataBase, nil
 }
 
-func (db *Database) GetColumnsOfDatabase() ([]string, error) {
-	dataBase, err := db.ConnectDatabase()
-	if err != nil {
-		return nil, err
-	}
-	defer dataBase.Close()
-
+func (db *Database) GetColumnsOfDatabase(dataBase *sql.DB) ([]string, error) {
 	rows, err := dataBase.Query("SELECT * FROM metrics LIMIT 1")
 	if err != nil {
 		return nil, err
@@ -96,19 +90,19 @@ func (db *Database) InsertInMetricsTable(dataBase *sql.DB, metricRecord record.M
 	}
 	
 	if count > 0 {
-		updateQuery := fmt.Sprintf("UPDATE metrics SET `Incoming links` = '%s' AND `Linking sites` = '%s' WHERE TargetPageId = '%d' AND Date = '%s'", metricRecord.IncomingLinks, metricRecord.LinkingSites, metricRecord.TargetPageId, metricRecord.Date)
+		updateQuery := fmt.Sprintf("UPDATE metrics SET `Incoming links` = '%s', `Linking sites` = '%s' WHERE TargetPageId = '%d' AND Date = '%s'", metricRecord.IncomingLinks, metricRecord.LinkingSites, metricRecord.TargetPageId, metricRecord.Date)
 		rows, err := dataBase.Query(updateQuery)
 		if err != nil {
 			return err
 		}
-		rows.Close()
+		defer rows.Close()
 	} else {
 		insertQuery := fmt.Sprintf("INSERT INTO metrics (TargetPageId, Date, `Incoming links`, `Linking sites`) VALUES ('%d', '%s', '%s', '%s')", metricRecord.TargetPageId, metricRecord.Date, metricRecord.IncomingLinks, metricRecord.LinkingSites)
 		rows, err := dataBase.Query(insertQuery)
 		if err != nil {
 			return err
 		}
-		rows.Close()
+		defer rows.Close()
 	}
 
 	return nil

@@ -15,7 +15,7 @@ import (
 func main() {
 	log.Print("Starting Application....")
 
-	fileName := "/home/pranav/go/src/go-data-ingestion/files/https___www.thisisbarry.com_-Top target pages-2022-08-04.csv"
+	fileName := "/home/pranav/go/src/go-data-ingestion/files/https___www.thisisbarry.com_-Top target pages-2022-08-16.csv"
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Println("Error opening file: %s", err)
@@ -71,7 +71,13 @@ func GetDateFromFileName(fileName string) (string) {
 
 func CheckColumnsInDatabase(fileName string) (error) {
 	var db database.IDatabase = &database.Database{}
-	dbColumns, err := db.GetColumnsOfDatabase()
+	dataBase, err := db.ConnectDatabase()
+	if err != nil {
+		return err
+	}
+	defer dataBase.Close()
+
+	dbColumns, err := db.GetColumnsOfDatabase(dataBase)
 	if err != nil {
 		return err
 	}
@@ -116,6 +122,11 @@ func InsertRecordInDatabase(fileName string, date string) (error) {
 	if err != nil {
 		return err
 	}
+
+	columnMap := map[string]int{}
+	for index, header := range records[0] {
+		columnMap[header] = index
+	}
 	
 	records = records[1:]
 	for _, row := range records {
@@ -127,10 +138,10 @@ func InsertRecordInDatabase(fileName string, date string) (error) {
 		metricRecord := record.MetricRecord{
 			TargetPageId: targetPageId,
 			Date: date,
-			IncomingLinks: row[1],
-			LinkingSites: row[2],
+			IncomingLinks: row[columnMap["Incoming links"]],
+			LinkingSites: row[columnMap["Linking sites"]],
 		}
-
+		
 		err = db.InsertInMetricsTable(dataBase, metricRecord)
 		if err != nil {
 			return err
